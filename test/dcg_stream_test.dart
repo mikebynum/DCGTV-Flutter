@@ -21,7 +21,7 @@ void main() {
   });
 
   test('rejects non-HTTPS playback URLs', () {
-    final json = Map<String, dynamic>.from(sample['streams'] as List == [] ? {} : (sample['streams'] as List).first as Map);
+    final json = Map<String, dynamic>.from((sample['streams'] as List).first as Map);
     json['url'] = 'javascript:alert(1)';
     expect(DcgStream.fromJson(json).safeUrl, isNull);
   });
