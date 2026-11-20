@@ -1,24 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/dcgtv_app.dart';
+import '../../core/presentation.dart';
 import '../../models/dcg_stream.dart';
 import '../../services/streams_repository.dart';
 
 final _sponsorUrl = Uri.https('www.charterbanker.com', '/');
 final _channelUrl = Uri.https('www.youtube.com', '/@DCGActivities/streams');
-
-String _localDateTime(BuildContext context, DateTime date) {
-  final local = date.toLocal();
-  final formatter = MaterialLocalizations.of(context);
-  final time = formatter.formatTimeOfDay(
-    TimeOfDay.fromDateTime(local),
-    alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
-  );
-  return '${formatter.formatFullDate(local)} • $time';
-}
 
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key});
@@ -70,17 +60,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Future<void> _open(Uri url) async {
-    try {
-      if (await launchUrl(url, mode: LaunchMode.inAppBrowserView)) return;
-    } on Exception catch (error) {
-      debugPrint('Could not open the Watch link: $error');
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Unable to open link')),
-    );
-  }
+  Future<void> _open(Uri url) => openInAppLink(context, url);
 
   Future<void> _refresh() => _repository.refresh(force: true);
 
@@ -161,7 +141,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 const Text('Live status is unverified.'),
               if (updated != null)
                 Text(
-                  'Last updated ${_localDateTime(context, updated)}',
+                  'Last updated ${localDateTime(context, updated)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               if (!current && !repository.isLoading)
@@ -314,7 +294,7 @@ class _BroadcastCard extends StatelessWidget {
         if (date != null) ...[
           const SizedBox(height: 3),
           Text(
-            _localDateTime(context, date),
+            localDateTime(context, date),
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: colors.onSurfaceVariant),
           ),

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/dcg_stream.dart';
+import 'json_snapshot_cache.dart';
 
 class CachedStreams {
   final StreamResponse response;
@@ -11,23 +12,22 @@ class CachedStreams {
 }
 
 class StreamCache {
-  static const _snapshotKey = 'dcgtv.streams.snapshot';
+  static const _snapshot = JsonSnapshotCache('dcgtv.streams.snapshot');
   static const _dataKey = 'dcgtv.streams.data';
   static const _savedKey = 'dcgtv.streams.savedAt';
 
   Future<CachedStreams?> load() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final snapshot = prefs.getString(_snapshotKey);
+      final snapshot = await _snapshot.load();
       if (snapshot != null) {
-        final decoded = jsonDecode(snapshot) as Map<String, dynamic>;
         return CachedStreams(
-          StreamResponse.fromJson(decoded['response'] as Map<String, dynamic>),
-          DateTime.parse(decoded['savedAt'] as String),
+          StreamResponse.fromJson(snapshot.data),
+          snapshot.savedAt,
         );
       }
 
       // Accept broadcasts saved by builds before the snapshot was introduced.
+      final prefs = await SharedPreferences.getInstance();
       final data = prefs.getString(_dataKey);
       final saved = prefs.getString(_savedKey);
       if (data == null || saved == null) return null;
@@ -40,15 +40,6 @@ class StreamCache {
     }
   }
 
-  Future<void> save(StreamResponse response, DateTime time) async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = await prefs.setString(
-      _snapshotKey,
-      jsonEncode({
-        'response': response.toJson(),
-        'savedAt': time.toUtc().toIso8601String(),
-      }),
-    );
-    if (!saved) throw StateError('Unable to save the broadcast cache');
-  }
+  Future<void> save(StreamResponse response, DateTime time) =>
+      _snapshot.save(response.toJson(), time);
 }
