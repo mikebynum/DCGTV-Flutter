@@ -1,70 +1,20 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import '../../app/dcgtv_app.dart';
 import '../../core/presentation.dart';
 import '../../models/dcg_stream.dart';
 import '../../services/streams_repository.dart';
+import 'broadcast_thumbnail.dart';
 
 final _sponsorUrl = Uri.https('www.charterbanker.com', '/');
 final _channelUrl = Uri.https('www.youtube.com', '/@DCGActivities/streams');
 
-class WatchScreen extends StatefulWidget {
-  const WatchScreen({super.key});
+class WatchScreen extends StatelessWidget {
+  const WatchScreen({super.key, required this.repository});
 
-  @override
-  State<WatchScreen> createState() => _WatchScreenState();
-}
-
-class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
-  final _repository = StreamsRepository();
-  Timer? _refreshTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _repository.addListener(_rebuild);
-    unawaited(_repository.initialize());
-    _startRefreshTimer();
-  }
-
-  void _rebuild() => setState(() {});
-
-  void _startRefreshTimer() {
-    _refreshTimer?.cancel();
-    // The repository checks expiry on each tick and throttles network requests.
-    _refreshTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => unawaited(_repository.refresh()),
-    );
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(_repository.refresh());
-      _startRefreshTimer();
-    } else {
-      _refreshTimer?.cancel();
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _refreshTimer?.cancel();
-    _repository.removeListener(_rebuild);
-    _repository.dispose();
-    super.dispose();
-  }
-
-  Future<void> _open(Uri url) => openInAppLink(context, url);
-
-  Future<void> _refresh() => _repository.refresh(force: true);
+  final StreamsRepository repository;
 
   List<Widget> _section(
+    BuildContext context,
     String title,
     IconData icon,
     List<DcgStream> streams,
@@ -85,14 +35,18 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
           _BroadcastCard(
             stream: stream,
             kind: kind,
-            onOpen: _open,
+            onOpen: (url) => openInAppLink(context, url),
           ),
         const SizedBox(height: 6),
       ];
 
   @override
-  Widget build(BuildContext context) {
-    final repository = _repository;
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: repository,
+        builder: (context, child) => _buildWatch(context),
+      );
+
+  Widget _buildWatch(BuildContext context) {
     final current = repository.isStatusCurrent;
     final updated = repository.lastUpdated;
     final live = repository.streams.where((stream) => stream.isLive).toList();
@@ -105,7 +59,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
-          onRefresh: _refresh,
+          onRefresh: () => repository.refresh(force: true),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -116,10 +70,10 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 label:
                     'DCGTV. Watch Live and On-Demand. Presented by Charter Bank.',
                 hint: 'Opens the Charter Bank website',
-                onTap: () => _open(_sponsorUrl),
+                onTap: () => openInAppLink(context, _sponsorUrl),
                 excludeSemantics: true,
                 child: InkWell(
-                  onTap: () => _open(_sponsorUrl),
+                  onTap: () => openInAppLink(context, _sponsorUrl),
                   child: Image.asset(
                     'assets/watch/DCGTVWatchHeader.png',
                     fit: BoxFit.fitWidth,
@@ -148,13 +102,14 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: TextButton.icon(
-                    onPressed: _refresh,
+                    onPressed: () => repository.refresh(force: true),
                     icon: const Icon(Icons.refresh),
                     label: const Text('Retry'),
                   ),
                 ),
               if (showSections) ...[
                 ..._section(
+                  context,
                   current ? 'Live Now' : 'Live Status Unverified',
                   Icons.sensors,
                   live,
@@ -165,6 +120,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ),
                 if (hasBroadcastData) ...[
                   ..._section(
+                    context,
                     'Upcoming',
                     Icons.event_outlined,
                     upcoming,
@@ -172,6 +128,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                     'No upcoming broadcasts available.',
                   ),
                   ..._section(
+                    context,
                     'Recent Broadcasts',
                     Icons.history,
                     repository.replays,
@@ -181,7 +138,7 @@ class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
                 ],
               ],
               FilledButton.icon(
-                onPressed: () => _open(_channelUrl),
+                onPressed: () => openInAppLink(context, _channelUrl),
                 style: FilledButton.styleFrom(
                   backgroundColor: dcgRed,
                   foregroundColor: Colors.white,
@@ -317,7 +274,7 @@ class _BroadcastCard extends StatelessWidget {
       ],
     );
 
-    final thumbnail = _BroadcastThumbnail(url: stream.thumbnail);
+    final thumbnail = BroadcastThumbnail(url: stream.thumbnail);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
@@ -349,40 +306,6 @@ class _BroadcastCard extends StatelessWidget {
               );
             },
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BroadcastThumbnail extends StatelessWidget {
-  final String url;
-
-  const _BroadcastThumbnail({required this.url});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final placeholder = ColoredBox(
-      color: colors.primaryContainer,
-      child: Center(
-          child: Icon(Icons.ondemand_video, color: colors.onPrimaryContainer)),
-    );
-
-    return ExcludeSemantics(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: url.startsWith('https://')
-              ? Image.network(
-                  url,
-                  fit: BoxFit.cover,
-                  frameBuilder: (context, child, frame, synchronous) =>
-                      synchronous || frame != null ? child : placeholder,
-                  errorBuilder: (context, error, stack) => placeholder,
-                )
-              : placeholder,
         ),
       ),
     );

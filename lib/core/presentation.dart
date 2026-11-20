@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+const dcgRed = Color(0xFFC8102E);
+
 String localTime(BuildContext context, DateTime date) =>
     MaterialLocalizations.of(context).formatTimeOfDay(
       TimeOfDay.fromDateTime(date.toLocal()),
