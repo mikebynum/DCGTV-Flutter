@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/presentation.dart';
@@ -13,6 +14,7 @@ import 'favorite_sports_picker.dart';
 import 'home_highlights.dart';
 import 'recent_results.dart';
 
+const _homeArtwork = 'assets/home/DCGTVHomeHero.png';
 final _boosterClubUrl = Uri.https('dcgboosterclub.com', '/');
 
 class HomeScreen extends StatefulWidget {
@@ -40,6 +42,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static const _favoritesKey = 'dcgtv.favoriteSports';
   final _preferences = SharedPreferences.getInstance();
+  final _scrollController = ScrollController();
   Set<String> _favoriteSports = const {};
   bool _favoritesReady = false;
 
@@ -47,6 +50,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     unawaited(_loadFavorites());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadFavorites() async {
@@ -129,116 +138,216 @@ class _HomeScreenState extends State<HomeScreen> {
         games.refreshFailed ||
         results.refreshFailed;
 
+    final insets = MediaQuery.paddingOf(context);
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: RefreshIndicator(
-          onRefresh: _refresh,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            children: [
-              Image.asset(
-                'assets/home/DCGTVHomeHero.png',
-                fit: BoxFit.fitWidth,
-                semanticLabel: 'DCGTV',
-              ),
-              if (loading)
-                const Padding(
-                  padding: EdgeInsets.only(top: 12),
-                  child: LinearProgressIndicator(
-                    semanticsLabel: 'Updating games, broadcasts, and results',
+      body: Column(
+        children: [
+          if (insets.top > 0)
+            _HomeStatusBar(
+              height: insets.top,
+              scrollController: _scrollController,
+            ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              child: CustomScrollView(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: AspectRatio(
+                      aspectRatio: 2,
+                      child: Image.asset(
+                        _homeArtwork,
+                        fit: BoxFit.contain,
+                        semanticLabel: 'DCGTV',
+                      ),
+                    ),
                   ),
-                ),
-              const SizedBox(height: 10),
-              _HomeSectionHeading(
-                title: 'Featured Broadcast',
-                action: 'All broadcasts',
-                onPressed: widget.onShowWatch,
-              ),
-              if (featured != null)
-                _FeaturedCard(broadcast: featured)
-              else if (!streams.isLoading)
-                _HomeMessage(
-                  streams.errorMessage != null
-                      ? 'Couldn’t load featured broadcasts.'
-                      : 'No broadcasts available.',
-                ),
-              if (!streams.isStatusCurrent && streams.lastUpdated != null)
-                const Padding(
-                  padding: EdgeInsets.only(top: 6),
-                  child: Text('Live status is unverified.'),
-                ),
-              const SizedBox(height: 12),
-              _HomeSectionHeading(
-                title: 'Upcoming Mustang Games',
-                action: 'Full schedule',
-                onPressed: widget.onShowSchedule,
-              ),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton.icon(
-                  onPressed: _favoritesReady &&
-                          (games.games.isNotEmpty || _favoriteSports.isNotEmpty)
-                      ? _editFavorites
-                      : null,
-                  icon: Icon(
-                      _favoriteSports.isEmpty ? Icons.star_border : Icons.star),
-                  label: Text(_favoriteSports.isEmpty
-                      ? 'Choose Favorite Sports'
-                      : 'Edit Favorite Sports'),
-                ),
-              ),
-              if (upcoming.isEmpty && !games.isLoading)
-                _HomeMessage(
-                  games.refreshFailed && games.lastUpdated == null
-                      ? 'Couldn’t load upcoming games.'
-                      : _favoriteSports.isEmpty
-                          ? 'No upcoming games with a confirmed time.'
-                          : 'No upcoming games in your favorite sports.',
-                ),
-              for (final game in upcoming)
-                GameCard(
-                  game: game,
-                  showDate: true,
-                  matchedBroadcastUrl: game.dcgtvUrl == null
-                      ? matchGameBroadcast(game, games.games, streams.streams)
-                      : null,
-                ),
-              if (games.showingSaved) const Text('Showing the saved schedule.'),
-              const SizedBox(height: 16),
-              RecentResults(repository: results),
-              const SizedBox(height: 16),
-              Semantics(
-                header: true,
-                child: Text(
-                  'Support DCGTV',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton.icon(
-                  onPressed: () => openInAppLink(context, _boosterClubUrl),
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('Visit the DCG Booster Club'),
-                ),
-              ),
-              if (failed && !loading)
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: TextButton.icon(
-                    onPressed: _refresh,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Retry'),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                        16 + insets.left, 0, 16 + insets.right, 24),
+                    sliver: SliverList.list(
+                      children: [
+                        if (loading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 12),
+                            child: LinearProgressIndicator(
+                              semanticsLabel:
+                                  'Updating games, broadcasts, and results',
+                            ),
+                          ),
+                        const SizedBox(height: 10),
+                        _HomeSectionHeading(
+                          title: 'Featured Broadcast',
+                          action: 'All broadcasts',
+                          onPressed: widget.onShowWatch,
+                        ),
+                        if (featured != null)
+                          _FeaturedCard(broadcast: featured)
+                        else if (!streams.isLoading)
+                          _HomeMessage(
+                            streams.errorMessage != null
+                                ? 'Couldn’t load featured broadcasts.'
+                                : 'No broadcasts available.',
+                          ),
+                        if (!streams.isStatusCurrent &&
+                            streams.lastUpdated != null)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6),
+                            child: Text('Live status is unverified.'),
+                          ),
+                        const SizedBox(height: 12),
+                        _HomeSectionHeading(
+                          title: 'Upcoming Mustang Games',
+                          action: 'Full schedule',
+                          onPressed: widget.onShowSchedule,
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            onPressed: _favoritesReady &&
+                                    (games.games.isNotEmpty ||
+                                        _favoriteSports.isNotEmpty)
+                                ? _editFavorites
+                                : null,
+                            icon: Icon(_favoriteSports.isEmpty
+                                ? Icons.star_border
+                                : Icons.star),
+                            label: Text(_favoriteSports.isEmpty
+                                ? 'Choose Favorite Sports'
+                                : 'Edit Favorite Sports'),
+                          ),
+                        ),
+                        if (upcoming.isEmpty && !games.isLoading)
+                          _HomeMessage(
+                            games.refreshFailed && games.lastUpdated == null
+                                ? 'Couldn’t load upcoming games.'
+                                : _favoriteSports.isEmpty
+                                    ? 'No upcoming games with a confirmed time.'
+                                    : 'No upcoming games in your favorite sports.',
+                          ),
+                        for (final game in upcoming)
+                          GameCard(
+                            game: game,
+                            showDate: true,
+                            matchedBroadcastUrl: game.dcgtvUrl == null
+                                ? matchGameBroadcast(
+                                    game, games.games, streams.streams)
+                                : null,
+                          ),
+                        if (games.showingSaved)
+                          const Text('Showing the saved schedule.'),
+                        const SizedBox(height: 16),
+                        RecentResults(repository: results),
+                        const SizedBox(height: 16),
+                        Semantics(
+                          header: true,
+                          child: Text(
+                            'Support DCGTV',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            onPressed: () =>
+                                openInAppLink(context, _boosterClubUrl),
+                            icon: const Icon(Icons.open_in_new, size: 16),
+                            label: const Text('Visit the DCG Booster Club'),
+                          ),
+                        ),
+                        if (failed && !loading)
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: TextButton.icon(
+                              onPressed: _refresh,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry'),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
+}
+
+class _HomeStatusBar extends StatelessWidget {
+  const _HomeStatusBar({required this.height, required this.scrollController});
+
+  final double height;
+  final ScrollController scrollController;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: scrollController,
+        builder: (context, child) {
+          final atTop =
+              !scrollController.hasClients || scrollController.offset <= 0;
+          final theme = Theme.of(context);
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: atTop || theme.brightness == Brightness.dark
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark,
+            child: SizedBox(
+              width: double.infinity,
+              height: height,
+              child:
+                  atTop ? child : ColoredBox(color: theme.colorScheme.surface),
+            ),
+          );
+        },
+        child: LayoutBuilder(
+          builder: (context, constraints) => Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Color(0xFF171819)),
+              // Mirror the top edge into the status area while keeping the
+              // complete banner below the system indicators.
+              Transform.flip(
+                flipY: true,
+                child: FittedBox(
+                  fit: BoxFit.fill,
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    height: constraints.maxWidth * .04,
+                    child: ClipRect(
+                      child: OverflowBox(
+                        alignment: Alignment.topCenter,
+                        minHeight: constraints.maxWidth / 2,
+                        maxHeight: constraints.maxWidth / 2,
+                        child: Image.asset(_homeArtwork,
+                            excludeFromSemantics: true),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xCC000000),
+                      Color(0x30000000),
+                      Colors.transparent
+                    ],
+                    stops: [0, .78, 1],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 class _HomeSectionHeading extends StatelessWidget {

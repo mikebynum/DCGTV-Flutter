@@ -136,8 +136,10 @@ void main() {
       (tester) async {
     tester.view.physicalSize = const Size(430, 900);
     tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 40);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPadding);
     SharedPreferences.setMockInitialValues({});
     final games = GamesRepository(
       now: () => _now,
@@ -216,6 +218,10 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    final artwork = find.byWidgetPredicate(
+      (widget) => widget is Image && widget.semanticLabel == 'DCGTV',
+    );
+    expect(tester.getRect(artwork), const Rect.fromLTWH(0, 40, 430, 215));
     final scroller = find.byType(Scrollable);
     expect(find.text('Featured Broadcast'), findsOneWidget);
     await tester.tap(find.text('All broadcasts'));

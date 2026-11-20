@@ -51,14 +51,23 @@ ThemeData dcgTheme(Brightness brightness) {
       foregroundColor: Colors.white,
     ),
     navigationBarTheme: NavigationBarThemeData(
-      indicatorColor: dcgRed,
+      indicatorColor: scheme.surfaceContainerHighest,
       iconTheme: WidgetStateProperty.resolveWith(
         (states) => IconThemeData(
+          size: 26,
           color: states.contains(WidgetState.selected)
-              ? Colors.white
-              : scheme.onSurfaceVariant,
+              ? scheme.primary
+              : scheme.onSurface,
         ),
       ),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        final selected = states.contains(WidgetState.selected);
+        return TextStyle(
+          color: selected ? scheme.primary : scheme.onSurface,
+          fontSize: 12,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+        );
+      }),
     ),
   );
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../features/home/home_screen.dart';
 import '../features/schedule/schedule_screen.dart';
@@ -96,31 +97,36 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     const labels = ['Home', 'Watch', 'Schedule', 'Shows'];
     const icons = [
-      Icons.home,
-      Icons.live_tv,
-      Icons.calendar_month,
-      Icons.movie,
+      Icons.home_rounded,
+      Icons.ondemand_video_rounded,
+      Icons.calendar_month_rounded,
+      Icons.local_movies_rounded,
     ];
-    return Scaffold(
-      body: IndexedStack(index: _selected, children: [
-        HomeScreen(
-          streams: _streams,
-          games: _games,
-          results: _results,
-          onShowWatch: () => _selectTab(1),
-          onShowSchedule: () => _selectTab(2),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: Theme.of(context).brightness == Brightness.dark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        body: IndexedStack(index: _selected, children: [
+          HomeScreen(
+            streams: _streams,
+            games: _games,
+            results: _results,
+            onShowWatch: () => _selectTab(1),
+            onShowSchedule: () => _selectTab(2),
+          ),
+          WatchScreen(repository: _streams),
+          ScheduleScreen(repository: _games),
+          ShowsScreen(repository: _shows),
+        ]),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _selected,
+          onDestinationSelected: _selectTab,
+          destinations: [
+            for (var i = 0; i < labels.length; i++)
+              NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
+          ],
         ),
-        WatchScreen(repository: _streams),
-        ScheduleScreen(repository: _games),
-        ShowsScreen(repository: _shows),
-      ]),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selected,
-        onDestinationSelected: _selectTab,
-        destinations: [
-          for (var i = 0; i < labels.length; i++)
-            NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
-        ],
       ),
     );
   }
