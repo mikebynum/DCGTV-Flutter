@@ -9,15 +9,18 @@ The Watch layout and exact `DCGTVWatchHeader.png` artwork come from the SwiftUI 
 - The request URL varies by minute because WordPress can cache the bare endpoint for five minutes. WordPress still controls when it updates the underlying feed.
 - Broadcast times use the device timezone and time format. Recent broadcasts use the feed’s replay list, newest first.
 
-## Validate on a Mac
+## Build and validate on a Mac
 
-Use the existing Flutter checkout if it already has generated native files. For a fresh checkout only, generate missing native scaffolding with `flutter create --platforms=ios,android --project-name dcgtv .` and review the generated files before committing them. The native directories generated during earlier local setup are still local.
+Install Flutter, the Android SDK, and Xcode with an iOS simulator runtime. The Android and iOS project files are included in the repository. From a fresh checkout:
 
 ```sh
 flutter pub get
-flutter analyze
+flutter analyze --no-fatal-infos
 flutter test
-flutter run
+flutter build apk --debug
+flutter build ios --simulator --debug
 ```
 
-Before merging, validate the layout and browser playback on both Android and iOS, including a real live event. Verify that pull-to-refresh restores current status after reconnecting and that the sponsor banner and YouTube channel links open. Home, Schedule, and Shows remain placeholders in the Flutter app.
+Select an emulator or simulator in VS Code and run the app to check the live list, sponsor link, and replay playback. Home, Schedule, and Shows are placeholders in this milestone.
+
+The native projects use development app IDs. Configure production IDs, signing, and launcher artwork before distributing the app.
