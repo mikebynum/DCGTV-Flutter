@@ -8,18 +8,18 @@ class GameCard extends StatelessWidget {
     super.key,
     required this.game,
     this.showDate = false,
-    this.showDcgTvLink = true,
+    this.matchedBroadcastUrl,
   });
 
   final DcgGame game;
   final bool showDate;
-  final bool showDcgTvLink;
+  final Uri? matchedBroadcastUrl;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final external = game.externalStream;
-    final dcgtv = game.dcgtvUrl;
+    final dcgtv = game.dcgtvUrl ?? matchedBroadcastUrl;
     final details = game.detailsUrl;
     final location = game.location;
     final status = game.status;
@@ -62,7 +62,7 @@ class GameCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(status, style: theme.textTheme.labelLarge),
               ),
-            if (showDcgTvLink && dcgtv != null)
+            if (dcgtv != null)
               FilledButton.icon(
                 onPressed: () => openInAppLink(context, dcgtv),
                 icon: const Icon(Icons.play_arrow),

@@ -2,14 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../core/presentation.dart';
 import '../features/home/home_screen.dart';
 import '../features/schedule/schedule_screen.dart';
 import '../features/shows/shows_screen.dart';
 import '../features/watch/watch_screen.dart';
 import '../services/games_repository.dart';
+import '../services/results_repository.dart';
 import '../services/shows_repository.dart';
 import '../services/streams_repository.dart';
+import 'dcg_theme.dart';
 
 class DcgTvApp extends StatelessWidget {
   const DcgTvApp({super.key});
@@ -19,17 +20,8 @@ class DcgTvApp extends StatelessWidget {
         title: 'DCGTV',
         debugShowCheckedModeBanner: false,
         themeMode: ThemeMode.system,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: dcgRed),
-          useMaterial3: true,
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: dcgRed,
-            brightness: Brightness.dark,
-          ),
-          useMaterial3: true,
-        ),
+        theme: dcgTheme(Brightness.light),
+        darkTheme: dcgTheme(Brightness.dark),
         home: const DcgTvShell(),
       );
 }
@@ -43,6 +35,7 @@ class DcgTvShell extends StatefulWidget {
 class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
   final _streams = StreamsRepository();
   final _games = GamesRepository();
+  final _results = ResultsRepository();
   final _shows = ShowsRepository();
   var _selected = 0;
   Timer? _streamRefreshTimer;
@@ -52,7 +45,7 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_streams.initialize());
-    unawaited(_games.refresh());
+    _refreshSelectedTab();
     _startStreamRefreshTimer();
   }
 
@@ -84,6 +77,7 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
 
   void _refreshSelectedTab() {
     if (_selected == 0 || _selected == 2) unawaited(_games.refresh());
+    if (_selected == 0) unawaited(_results.refresh());
     if (_selected == 3) unawaited(_shows.refresh());
   }
 
@@ -93,6 +87,7 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
     _streamRefreshTimer?.cancel();
     _streams.dispose();
     _games.dispose();
+    _results.dispose();
     _shows.dispose();
     super.dispose();
   }
@@ -111,6 +106,7 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
         HomeScreen(
           streams: _streams,
           games: _games,
+          results: _results,
           onShowWatch: () => _selectTab(1),
           onShowSchedule: () => _selectTab(2),
         ),

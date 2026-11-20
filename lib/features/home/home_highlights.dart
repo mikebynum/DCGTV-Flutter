@@ -5,19 +5,87 @@ const _inactiveGameStatuses = {'canceled', 'cancelled', 'postponed'};
 final _testBroadcastTitle =
     RegExp(r'^(?:\[test\]|test\b)', caseSensitive: false);
 
-DcgGame? nextScheduledGame(Iterable<DcgGame> games, DateTime now) {
-  DcgGame? next;
-  DateTime? nextStart;
-  for (final game in games) {
+List<DcgGame> upcomingMustangGames(
+  Iterable<DcgGame> games,
+  DateTime now, {
+  Set<String> favoriteSports = const {},
+}) {
+  final upcoming = games.where((game) {
     final start = game.start;
-    if (start == null || start.isBefore(now)) continue;
-    if (_inactiveGameStatuses.contains(game.status?.toLowerCase())) continue;
-    if (nextStart == null || start.isBefore(nextStart)) {
-      next = game;
-      nextStart = start;
-    }
+    return start != null &&
+        !start.isBefore(now) &&
+        !_inactiveGameStatuses.contains(game.status?.toLowerCase()) &&
+        (favoriteSports.isEmpty || favoriteSports.contains(game.sport));
+  }).toList()
+    ..sort((a, b) {
+      final order = a.start!.compareTo(b.start!);
+      return order == 0 ? a.id.compareTo(b.id) : order;
+    });
+  return upcoming.take(3).toList();
+}
+
+Uri? matchGameBroadcast(
+  DcgGame game,
+  Iterable<DcgGame> schedule,
+  Iterable<DcgStream> streams,
+) {
+  final candidates = streams
+      .where((stream) =>
+          stream.safeUrl != null &&
+          !_testBroadcastTitle.hasMatch(stream.title.trimLeft()) &&
+          _matchesGame(game, stream))
+      .toList();
+  if (candidates.length != 1) return null;
+  final stream = candidates.single;
+  return schedule.where((other) => _matchesGame(other, stream)).length == 1
+      ? stream.safeUrl
+      : null;
+}
+
+String _normalized(String text) => RegExp(r'[a-z0-9]+')
+    .allMatches(text.toLowerCase())
+    .map((match) => match.group(0)!)
+    .join(' ');
+
+bool _matchesGame(DcgGame game, DcgStream stream) {
+  final gameStart = game.start;
+  final streamStart = stream.startDate;
+  if (gameStart == null ||
+      streamStart == null ||
+      (gameStart.difference(streamStart).abs() > const Duration(hours: 3)) ||
+      _inactiveGameStatuses.contains(game.status?.toLowerCase())) {
+    return false;
   }
-  return next;
+
+  final teams =
+      game.title.split(RegExp(r'\s+(?:vs\.?|at)\s+', caseSensitive: false));
+  if (teams.length != 2) return false;
+  final left = _normalized(teams.first.split('(').first);
+  final right = _normalized(teams.last.split('(').first);
+  final opponent = left == 'dcg'
+      ? right
+      : right == 'dcg'
+          ? left
+          : '';
+  if (opponent.length < 4) return false;
+
+  final sport = _normalized(game.sport);
+  final coreSport = sport.replaceFirst(RegExp(r'^(?:boys|girls) '), '');
+  final title = ' ${_normalized(stream.title)} ';
+  if (!title.contains(' $opponent ') ||
+      coreSport.isEmpty ||
+      !title.contains(' $coreSport ')) {
+    return false;
+  }
+  if (sport.startsWith('boys ') && title.contains(' girls ')) return false;
+  if (sport.startsWith('girls ') && title.contains(' boys ')) return false;
+
+  final level = _normalized(game.level);
+  final juniorVarsity =
+      title.contains(' junior varsity ') || title.contains(' jv ');
+  if (juniorVarsity) return level == 'junior varsity' || level == 'jv';
+  if (title.contains(' varsity ')) return level == 'varsity';
+  return true;
 }
 
 enum FeaturedKind {
