@@ -7,7 +7,8 @@ class DcgApiClient {
   static final base = Uri.parse('https://dcgboosterclub.com/wp-json/dcg/v1/');
 
   Future<Map<String, dynamic>> getObject(String endpoint) async {
-    final response = await _client.get(base.resolve(endpoint))
+    final response = await _client
+        .get(base.resolve(endpoint))
         .timeout(const Duration(seconds: 20));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('DCGTV API returned HTTP ${response.statusCode}');
@@ -17,6 +18,12 @@ class DcgApiClient {
       throw const FormatException('Expected a JSON object');
     }
     return decoded;
+  }
+
+  // WordPress's edge cache can serve the bare URL for several minutes.
+  Future<Map<String, dynamic>> getSnapshot(String endpoint, DateTime now) {
+    final minute = now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute;
+    return getObject('$endpoint?_dcgtv_refresh=$minute');
   }
 
   void close() => _client.close();

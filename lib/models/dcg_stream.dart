@@ -1,3 +1,5 @@
+import '../core/https_link.dart';
+
 class DcgStream {
   final String id;
   final String title;
@@ -43,15 +45,7 @@ class DcgStream {
     return trimmed.isEmpty ? title : trimmed;
   }
 
-  Uri? get safeUrl {
-    final parsed = Uri.tryParse(url);
-    return parsed != null &&
-            parsed.scheme == 'https' &&
-            parsed.host.isNotEmpty &&
-            parsed.userInfo.isEmpty
-        ? parsed
-        : null;
-  }
+  Uri? get safeUrl => safeHttpsUrl(url);
 }
 
 class StreamResponse {

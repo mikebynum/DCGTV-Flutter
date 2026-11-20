@@ -80,10 +80,8 @@ class StreamsRepository extends ChangeNotifier {
   Future<void> _fetch() async {
     final StreamResponse response;
     try {
-      final minute = _now().millisecondsSinceEpoch ~/ 60000;
-      // WordPress's edge cache can serve the bare URL for five minutes.
       response = StreamResponse.fromJson(
-        await _api.getObject('streams?_dcgtv_refresh=$minute'),
+        await _api.getSnapshot('streams', _now()),
       );
     } catch (error) {
       if (_disposed) return;
