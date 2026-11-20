@@ -6,6 +6,7 @@ import 'package:dcgtv/features/home/home_screen.dart';
 import 'package:dcgtv/models/dcg_game.dart';
 import 'package:dcgtv/models/dcg_stream.dart';
 import 'package:dcgtv/services/games_repository.dart';
+import 'package:dcgtv/services/results_repository.dart';
 import 'package:dcgtv/services/streams_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,11 +19,11 @@ final _future = _now.add(const Duration(hours: 1));
 final _past = _now.subtract(const Duration(hours: 1));
 
 Map<String, Object?> _gameJson(String title, DateTime? start,
-        {String? status}) =>
+        {String? status, String sport = 'Girls Basketball'}) =>
     {
       'id': title,
       'title': title,
-      'sport': 'Girls Basketball',
+      'sport': sport,
       'level': 'Varsity',
       'start': start?.toIso8601String(),
       'location': 'DCG Meadows Main Gym',
@@ -44,7 +45,7 @@ DcgStream _stream(String title, String status,
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('next game skips past, undated, canceled and postponed games', () {
+  test('next three games are chronological and respect favorite sports', () {
     final events = [
       _gameJson('Later game', _future.add(const Duration(hours: 2))),
       _gameJson('Earlier game', _past),
@@ -52,11 +53,34 @@ void main() {
       _gameJson('Canceled game', _now, status: 'Cancelled'),
       _gameJson('Undated game', null),
       _gameJson('Next game', _future),
+      _gameJson('Wrestling', _future.add(const Duration(minutes: 5)),
+          sport: 'Girls Wrestling'),
+      _gameJson('Other game', _future.add(const Duration(minutes: 10))),
     ].map(DcgGame.fromJson);
 
-    expect(nextScheduledGame(events, _now)?.title, 'Next game');
-    expect(nextScheduledGame(events, _future.add(const Duration(days: 1))),
-        isNull);
+    expect(upcomingMustangGames(events, _now).map((game) => game.title),
+        ['Next game', 'Wrestling', 'Other game']);
+    expect(
+        upcomingMustangGames(events, _now, favoriteSports: {'Girls Basketball'})
+            .map((game) => game.title),
+        ['Next game', 'Other game', 'Later game']);
+    expect(upcomingMustangGames(events, _future.add(const Duration(days: 1))),
+        isEmpty);
+  });
+
+  test('fallback broadcast requires a unique game and a matching sport', () {
+    final game = DcgGame.fromJson(
+        {..._gameJson('Ballard vs DCG', _future), 'dcgtv_stream': null});
+    final matching = _stream(
+        'Ballard at DCG Girls Varsity Basketball', 'upcoming',
+        start: _future);
+    final wrong = _stream('Ballard at DCG Boys Varsity Basketball', 'upcoming',
+        start: _future);
+    expect(
+        matchGameBroadcast(game, [game], [wrong, matching]), matching.safeUrl);
+    final ambiguous = DcgGame.fromJson(
+        {..._gameJson('DCG at Ballard', _future), 'dcgtv_stream': null});
+    expect(matchGameBroadcast(game, [game, ambiguous], [matching]), isNull);
   });
 
   test('only verified live broadcasts outrank the next upcoming stream', () {
@@ -107,15 +131,26 @@ void main() {
     expect(feature?.stream, newest);
   });
 
-  testWidgets('shows the next game, a verified LIVE badge, and navigation',
+  testWidgets(
+      'shows Home links, saves favorites, and displays verified results',
       (tester) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 40, bottom: 88);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPadding);
     SharedPreferences.setMockInitialValues({});
     final games = GamesRepository(
       now: () => _now,
       api: DcgApiClient(
           client: MockClient((_) async => http.Response(
                 jsonEncode({
-                  'games': [_gameJson('Ballard vs DCG', _future)]
+                  'games': [
+                    _gameJson('Ballard vs DCG', _future),
+                    _gameJson('Wrestling Invitational', _future,
+                        sport: 'Girls Wrestling'),
+                  ]
                 }),
                 200,
               ))),
@@ -136,7 +171,39 @@ void main() {
               ))),
     );
     addTearDown(streams.dispose);
-    await Future.wait([streams.initialize(), games.refresh()]);
+    final results = ResultsRepository(
+      api: DcgApiClient(client: MockClient((request) async {
+        expect(request.url.path, '/wp-json/dcg/v1/results');
+        return http.Response(
+            jsonEncode({
+              'results': [
+                {
+                  'title': 'Girls Basketball: DCG vs North Polk (Varsity)',
+                  'sport': 'Girls Basketball',
+                  'level': 'Varsity',
+                  'dcg_score': 50,
+                  'opponent_score': 42,
+                  'status': 'FINAL',
+                  'start': _past.toIso8601String(),
+                },
+                {
+                  'title': 'Incomplete game',
+                  'sport': 'Girls Basketball',
+                  'level': 'Varsity',
+                  'dcg_score': 9,
+                  'opponent_score': 5,
+                  'status': 'live',
+                  'start': _now.toIso8601String(),
+                },
+              ],
+            }),
+            200);
+      })),
+    );
+    addTearDown(results.dispose);
+    await Future.wait(
+        [streams.initialize(), games.refresh(), results.refresh()]);
+    expect(results.results.single.title, 'DCG vs North Polk');
 
     var watchOpened = false;
     var scheduleOpened = false;
@@ -144,27 +211,58 @@ void main() {
       home: HomeScreen(
         streams: streams,
         games: games,
+        results: results,
         onShowWatch: () => watchOpened = true,
         onShowSchedule: () => scheduleOpened = true,
         now: () => _now,
       ),
     ));
     await tester.pumpAndSettle();
+    final artwork = find.byWidgetPredicate(
+      (widget) => widget is Image && widget.semanticLabel == 'DCGTV',
+    );
+    expect(tester.getRect(artwork), const Rect.fromLTWH(0, 40, 430, 215));
     final scroller = find.byType(Scrollable);
     expect(find.text('Featured Broadcast'), findsOneWidget);
     await tester.tap(find.text('All broadcasts'));
     expect(watchOpened, isTrue);
     await tester.scrollUntilVisible(find.text('Watch Live'), 150,
-        scrollable: scroller);
+        scrollable: scroller, continuous: true);
     expect(find.text('LIVE'), findsOneWidget);
     expect(find.text('Ballard Pregame'), findsOneWidget);
 
     await tester.scrollUntilVisible(find.text('Full schedule'), 150,
-        scrollable: scroller);
+        scrollable: scroller, continuous: true);
     await tester.tap(find.text('Full schedule'));
     expect(scheduleOpened, isTrue);
     await tester.scrollUntilVisible(find.text('Ballard vs DCG'), 150,
-        scrollable: scroller);
-    expect(find.text('Watch on DCGTV'), findsNothing);
+        scrollable: scroller, continuous: true);
+    await tester.scrollUntilVisible(find.text('Watch on DCGTV').first, 140,
+        scrollable: scroller, continuous: true);
+    expect(find.text('Watch on DCGTV'), findsWidgets);
+    await tester.scrollUntilVisible(
+        find.text('Visit the DCG Booster Club'), 150,
+        scrollable: scroller, continuous: true);
+    expect(find.text('DCG 50–42 · Win'), findsOneWidget);
+    final scrollPosition = tester.state<ScrollableState>(scroller).position;
+    scrollPosition.jumpTo(scrollPosition.maxScrollExtent);
+    await tester.pumpAndSettle();
+    // The last link can scroll completely above the floating bar.
+    expect(tester.getBottomRight(find.text('Visit the DCG Booster Club')).dy,
+        lessThanOrEqualTo(900 - 88));
+
+    await tester.scrollUntilVisible(find.text('Choose Favorite Sports'), -150,
+        scrollable: scroller, continuous: true);
+    await tester.tap(find.text('Choose Favorite Sports'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Girls Wrestling').last);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+        preferences.getStringList('dcgtv.favoriteSports'), ['Girls Wrestling']);
+    await tester.scrollUntilVisible(find.text('Wrestling Invitational'), 140,
+        scrollable: scroller, continuous: true);
+    expect(find.text('Ballard vs DCG'), findsNothing);
   });
 }

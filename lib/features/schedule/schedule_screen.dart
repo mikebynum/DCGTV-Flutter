@@ -83,7 +83,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  padding: EdgeInsets.fromLTRB(
+                      16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
                   children: [
                     Semantics(
                       header: true,
