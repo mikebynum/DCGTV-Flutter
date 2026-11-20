@@ -144,7 +144,7 @@ void main() {
     await repository.refresh();
 
     await tester.pumpWidget(
-      MaterialApp(home: ScheduleScreen(active: true, repository: repository)),
+      MaterialApp(home: ScheduleScreen(repository: repository)),
     );
     await tester.pumpAndSettle();
     expect(find.text('Ballard vs DCG'), findsOneWidget);

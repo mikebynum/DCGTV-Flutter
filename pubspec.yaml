@@ -19,3 +19,4 @@ flutter:
   assets:
     - assets/watch/DCGTVWatchHeader.png
     - assets/schedule/DCGTVScheduleHeader.png
+    - assets/home/DCGTVHomeHero.png
