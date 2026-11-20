@@ -62,7 +62,8 @@ class WatchScreen extends StatelessWidget {
           onRefresh: () => repository.refresh(force: true),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            padding: EdgeInsets.fromLTRB(
+                16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
             children: [
               Semantics(
                 header: true,

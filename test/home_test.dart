@@ -136,7 +136,7 @@ void main() {
       (tester) async {
     tester.view.physicalSize = const Size(430, 900);
     tester.view.devicePixelRatio = 1;
-    tester.view.padding = const FakeViewPadding(top: 40);
+    tester.view.padding = const FakeViewPadding(top: 40, bottom: 88);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPadding);
@@ -244,6 +244,12 @@ void main() {
         find.text('Visit the DCG Booster Club'), 150,
         scrollable: scroller, continuous: true);
     expect(find.text('DCG 50–42 · Win'), findsOneWidget);
+    final scrollPosition = tester.state<ScrollableState>(scroller).position;
+    scrollPosition.jumpTo(scrollPosition.maxScrollExtent);
+    await tester.pumpAndSettle();
+    // The last link can scroll completely above the floating bar.
+    expect(tester.getBottomRight(find.text('Visit the DCG Booster Club')).dy,
+        lessThanOrEqualTo(900 - 88));
 
     await tester.scrollUntilVisible(find.text('Choose Favorite Sports'), -150,
         scrollable: scroller, continuous: true);

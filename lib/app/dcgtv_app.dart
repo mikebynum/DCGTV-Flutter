@@ -12,6 +12,7 @@ import '../services/results_repository.dart';
 import '../services/shows_repository.dart';
 import '../services/streams_repository.dart';
 import 'dcg_theme.dart';
+import 'glass_tab_bar.dart';
 
 class DcgTvApp extends StatelessWidget {
   const DcgTvApp({super.key});
@@ -39,6 +40,7 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
   final _results = ResultsRepository();
   final _shows = ShowsRepository();
   var _selected = 0;
+  var _useGlassTabBar = false;
   Timer? _streamRefreshTimer;
 
   @override
@@ -48,6 +50,13 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
     unawaited(_streams.initialize());
     _refreshSelectedTab();
     _startStreamRefreshTimer();
+    unawaited(_loadTabBar());
+  }
+
+  Future<void> _loadTabBar() async {
+    if (await GlassTabBar.isSupported() && mounted) {
+      setState(() => _useGlassTabBar = true);
+    }
   }
 
   void _startStreamRefreshTimer() {
@@ -102,31 +111,70 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
       Icons.calendar_month_rounded,
       Icons.local_movies_rounded,
     ];
+    final tabs = IndexedStack(index: _selected, children: [
+      HomeScreen(
+        streams: _streams,
+        games: _games,
+        results: _results,
+        onShowWatch: () => _selectTab(1),
+        onShowSchedule: () => _selectTab(2),
+      ),
+      WatchScreen(repository: _streams),
+      ScheduleScreen(repository: _games),
+      ShowsScreen(repository: _shows),
+    ]);
+    final showGlassBar =
+        _useGlassTabBar && MediaQuery.viewInsetsOf(context).bottom == 0;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Theme.of(context).brightness == Brightness.dark
           ? SystemUiOverlayStyle.light
           : SystemUiOverlayStyle.dark,
       child: Scaffold(
-        body: IndexedStack(index: _selected, children: [
-          HomeScreen(
-            streams: _streams,
-            games: _games,
-            results: _results,
-            onShowWatch: () => _selectTab(1),
-            onShowSchedule: () => _selectTab(2),
-          ),
-          WatchScreen(repository: _streams),
-          ScheduleScreen(repository: _games),
-          ShowsScreen(repository: _shows),
-        ]),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selected,
-          onDestinationSelected: _selectTab,
-          destinations: [
-            for (var i = 0; i < labels.length; i++)
-              NavigationDestination(icon: Icon(icons[i]), label: labels[i]),
-          ],
-        ),
+        body: Builder(builder: (context) {
+          final media = MediaQuery.of(context);
+          final barBottom =
+              (media.padding.bottom - 6).clamp(8.0, double.infinity);
+          final bottomPadding = barBottom + GlassTabBar.height;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              MediaQuery(
+                data: showGlassBar
+                    ? media.copyWith(
+                        padding: media.padding.copyWith(bottom: bottomPadding))
+                    : media,
+                child: tabs,
+              ),
+              if (showGlassBar)
+                Positioned(
+                  left: media.padding.left + 16,
+                  right: media.padding.right + 16,
+                  bottom: barBottom,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 540),
+                      child: GlassTabBar(
+                        selectedIndex: _selected,
+                        onSelected: _selectTab,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        }),
+        bottomNavigationBar: _useGlassTabBar
+            ? null
+            : NavigationBar(
+                selectedIndex: _selected,
+                onDestinationSelected: _selectTab,
+                destinations: [
+                  for (var i = 0; i < labels.length; i++)
+                    NavigationDestination(
+                        icon: Icon(icons[i]), label: labels[i]),
+                ],
+              ),
       ),
     );
   }

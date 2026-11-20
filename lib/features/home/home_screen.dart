@@ -165,8 +165,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                        16 + insets.left, 0, 16 + insets.right, 24),
+                    padding: EdgeInsets.fromLTRB(16 + insets.left, 0,
+                        16 + insets.right, 24 + insets.bottom),
                     sliver: SliverList.list(
                       children: [
                         if (loading)
