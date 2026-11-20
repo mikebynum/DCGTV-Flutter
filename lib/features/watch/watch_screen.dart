@@ -1,163 +1,410 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../app/dcgtv_app.dart';
 import '../../models/dcg_stream.dart';
 import '../../services/streams_repository.dart';
 
+final _sponsorUrl = Uri.https('www.charterbanker.com', '/');
+final _channelUrl = Uri.https('www.youtube.com', '/@DCGActivities/streams');
+
+String _localDateTime(BuildContext context, DateTime date) {
+  final local = date.toLocal();
+  final formatter = MaterialLocalizations.of(context);
+  final time = formatter.formatTimeOfDay(
+    TimeOfDay.fromDateTime(local),
+    alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+  );
+  return '${formatter.formatFullDate(local)} • $time';
+}
+
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key});
+
   @override
   State<WatchScreen> createState() => _WatchScreenState();
 }
 
 class _WatchScreenState extends State<WatchScreen> with WidgetsBindingObserver {
-  late final StreamsRepository repository;
-  Timer? refreshTimer;
-  Timer? freshnessTimer;
+  final _repository = StreamsRepository();
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    repository = StreamsRepository();
-    repository.addListener(_rebuild);
-    repository.initialize();
-    _startTimers();
+    _repository.addListener(_rebuild);
+    unawaited(_repository.initialize());
+    _startRefreshTimer();
   }
 
-  void _rebuild() { if (mounted) setState(() {}); }
+  void _rebuild() => setState(() {});
 
-  void _startTimers() {
-    refreshTimer?.cancel();
-    freshnessTimer?.cancel();
-    refreshTimer = Timer.periodic(const Duration(seconds: 60),
-        (_) => repository.refresh());
-    freshnessTimer = Timer.periodic(const Duration(seconds: 5),
-        (_) => repository.expireStatusIfNeeded());
+  void _startRefreshTimer() {
+    _refreshTimer?.cancel();
+    // The repository checks expiry on each tick and throttles network requests.
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(_repository.refresh()),
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      repository.expireStatusIfNeeded();
-      repository.refresh();
-      _startTimers();
+      unawaited(_repository.refresh());
+      _startRefreshTimer();
     } else {
-      refreshTimer?.cancel();
-      freshnessTimer?.cancel();
+      _refreshTimer?.cancel();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    refreshTimer?.cancel();
-    freshnessTimer?.cancel();
-    repository.removeListener(_rebuild);
-    repository.dispose();
+    _refreshTimer?.cancel();
+    _repository.removeListener(_rebuild);
+    _repository.dispose();
     super.dispose();
   }
 
-  Future<void> _open(Uri? url) async {
-    if (url == null) return;
-    if (!await launchUrl(url, mode: LaunchMode.inAppBrowserView)) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open video')),
-      );
+  Future<void> _open(Uri url) async {
+    try {
+      if (await launchUrl(url, mode: LaunchMode.inAppBrowserView)) return;
+    } on Exception catch (error) {
+      debugPrint('Could not open the Watch link: $error');
     }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Unable to open link')),
+    );
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('DCGTV • Watch')),
-    body: RefreshIndicator(
-      onRefresh: () => repository.refresh(force: true),
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: dcgRed, borderRadius: BorderRadius.circular(16)),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('WATCH LIVE & ON DEMAND',
-                  style: TextStyle(color: Colors.white, fontSize: 21,
-                    fontWeight: FontWeight.bold)),
-                SizedBox(height: 6),
-                Text('Mustang pride. Wherever you are.',
-                  style: TextStyle(color: Colors.white)),
-              ],
+  Future<void> _refresh() => _repository.refresh(force: true);
+
+  List<Widget> _section(
+    String title,
+    IconData icon,
+    List<DcgStream> streams,
+    _BroadcastKind kind,
+    String emptyMessage,
+  ) =>
+      [
+        _SectionHeading(title: title, icon: icon),
+        if (streams.isEmpty)
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(emptyMessage),
             ),
           ),
-          const SizedBox(height: 16),
-          if (repository.isLoading) const LinearProgressIndicator(),
-          if (repository.errorMessage != null)
-            Text(repository.lastUpdated == null
-                ? 'Broadcasts could not be loaded. Pull to retry.'
-                : 'Could not refresh. Showing saved information; live status is unverified.'),
-          if (!repository.isStatusCurrent && repository.lastUpdated != null &&
-              repository.errorMessage == null)
-            const Text('Saved broadcasts. Live status is unverified.'),
-          if (repository.lastUpdated != null)
-            Text('Last updated: ${repository.lastUpdated!.toLocal()}',
-                style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 12),
-          Text('Live & Upcoming', style: Theme.of(context).textTheme.titleLarge),
-          if (repository.streams.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 20),
-              child: Text('No live or upcoming broadcasts available.')),
-          ...repository.streams.map((s) => _StreamTile(
-            stream: s, isStatusCurrent: repository.isStatusCurrent,
-            onTap: () => _open(s.safeUrl),
-          )),
-          const SizedBox(height: 16),
-          Text('Replays', style: Theme.of(context).textTheme.titleLarge),
-          if (repository.replays.isEmpty)
-            const Text('No replays available.'),
-          ...repository.replays.map((s) => _StreamTile(
-            stream: s, isStatusCurrent: repository.isStatusCurrent,
-            onTap: () => _open(s.safeUrl),
-          )),
-          const SizedBox(height: 16),
-          Card(child: ListTile(
-            title: const Text('DCGTV livestreams presented by Charter Bank'),
-            subtitle: const Text('Official livestream sponsor'),
-            trailing: const Icon(Icons.open_in_new),
-            onTap: () => _open(Uri.parse('https://www.charterbanker.com/')),
-          )),
-        ],
-      ),
-    ),
-  );
-}
-
-class _StreamTile extends StatelessWidget {
-  final DcgStream stream;
-  final bool isStatusCurrent;
-  final VoidCallback onTap;
-  const _StreamTile({required this.stream, required this.isStatusCurrent,
-    required this.onTap});
+        for (final stream in streams)
+          _BroadcastCard(
+            stream: stream,
+            kind: kind,
+            onOpen: _open,
+          ),
+        const SizedBox(height: 6),
+      ];
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: ListTile(
-      onTap: stream.safeUrl == null ? null : onTap,
-      leading: SizedBox(width: 96, height: 60,
-        child: stream.thumbnail.startsWith('https://')
-          ? Image.network(stream.thumbnail, fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(Icons.live_tv))
-          : const Icon(Icons.live_tv)),
-      title: Text(stream.title, maxLines: 2,
-        overflow: TextOverflow.ellipsis),
-      subtitle: Text([
-        if (stream.isLive) isStatusCurrent ? 'LIVE NOW' : 'LIVE AT LAST UPDATE'
-        else if (stream.isUpcoming) 'Upcoming' else 'Replay',
-        if (stream.startDate != null) stream.startDate!.toLocal().toString(),
-      ].join(' • ')),
-      trailing: const Icon(Icons.play_circle_outline, color: dcgRed),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final repository = _repository;
+    final current = repository.isStatusCurrent;
+    final updated = repository.lastUpdated;
+    final live = repository.streams.where((stream) => stream.isLive).toList();
+    final upcoming =
+        repository.streams.where((stream) => stream.isUpcoming).toList();
+    final hasBroadcastData = updated != null;
+    final showSections = hasBroadcastData || !repository.isLoading;
+
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            children: [
+              Semantics(
+                header: true,
+                button: true,
+                label:
+                    'DCGTV. Watch Live and On-Demand. Presented by Charter Bank.',
+                hint: 'Opens the Charter Bank website',
+                onTap: () => _open(_sponsorUrl),
+                excludeSemantics: true,
+                child: InkWell(
+                  onTap: () => _open(_sponsorUrl),
+                  child: Image.asset(
+                    'assets/watch/DCGTVWatchHeader.png',
+                    fit: BoxFit.fitWidth,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (repository.isLoading)
+                const LinearProgressIndicator(
+                  semanticsLabel: 'Updating broadcasts',
+                ),
+              if (repository.errorMessage != null)
+                Text(
+                  hasBroadcastData
+                      ? 'Couldn’t refresh. Showing saved broadcasts. Live status is unverified.'
+                      : 'Couldn’t load broadcasts. Check your connection and retry.',
+                )
+              else if (!current && hasBroadcastData)
+                const Text('Live status is unverified.'),
+              if (updated != null)
+                Text(
+                  'Last updated ${_localDateTime(context, updated)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              if (!current && !repository.isLoading)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: _refresh,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ),
+              if (showSections) ...[
+                ..._section(
+                  current ? 'Live Now' : 'Live Status Unverified',
+                  Icons.sensors,
+                  live,
+                  current ? _BroadcastKind.live : _BroadcastKind.unverified,
+                  current
+                      ? 'Nothing live right now.'
+                      : 'Live status is unavailable.',
+                ),
+                if (hasBroadcastData) ...[
+                  ..._section(
+                    'Upcoming',
+                    Icons.event_outlined,
+                    upcoming,
+                    _BroadcastKind.upcoming,
+                    'No upcoming broadcasts available.',
+                  ),
+                  ..._section(
+                    'Recent Broadcasts',
+                    Icons.history,
+                    repository.replays,
+                    _BroadcastKind.replay,
+                    'Completed DCGTV broadcasts will appear here.',
+                  ),
+                ],
+              ],
+              FilledButton.icon(
+                onPressed: () => _open(_channelUrl),
+                style: FilledButton.styleFrom(
+                  backgroundColor: dcgRed,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                icon: const Icon(Icons.ondemand_video),
+                label: const Text('Browse All Broadcasts'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  final String title;
+  final IconData icon;
+
+  const _SectionHeading({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 8),
+        child: Semantics(
+          header: true,
+          child: Row(
+            children: [
+              Icon(icon, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+enum _BroadcastKind {
+  live('LIVE', 'Watch Live', Icons.sensors),
+  unverified('Live at last update', 'View Stream', Icons.history),
+  upcoming('Upcoming', 'View Stream', Icons.event_outlined),
+  replay('Replay', 'Watch Replay', Icons.replay);
+
+  final String label;
+  final String action;
+  final IconData icon;
+
+  const _BroadcastKind(this.label, this.action, this.icon);
+}
+
+class _BroadcastCard extends StatelessWidget {
+  final DcgStream stream;
+  final _BroadcastKind kind;
+  final ValueChanged<Uri> onOpen;
+
+  const _BroadcastCard({
+    required this.stream,
+    required this.kind,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isLive = kind == _BroadcastKind.live;
+    final isReplay = kind == _BroadcastKind.replay;
+    final date = stream.startDate;
+    final url = stream.safeUrl;
+
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: isLive
+                ? dcgRed
+                : isReplay
+                    ? colors.secondaryContainer
+                    : colors.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            kind.label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: isLive
+                  ? Colors.white
+                  : isReplay
+                      ? colors.onSecondaryContainer
+                      : colors.onSurfaceVariant,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          stream.displayTitle,
+          style:
+              theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        if (date != null) ...[
+          const SizedBox(height: 3),
+          Text(
+            _localDateTime(context, date),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ],
+        if (url != null) ...[
+          const SizedBox(height: 5),
+          Text.rich(
+            TextSpan(
+              children: [
+                WidgetSpan(
+                  child: Icon(kind.icon, size: 15, color: colors.primary),
+                  alignment: PlaceholderAlignment.middle,
+                ),
+                TextSpan(text: ' ${kind.action}'),
+              ],
+            ),
+            style: theme.textTheme.labelMedium?.copyWith(color: colors.primary),
+          ),
+        ],
+      ],
+    );
+
+    final thumbnail = _BroadcastThumbnail(url: stream.thumbnail);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(isReplay ? 12 : 16)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: url == null ? null : () => onOpen(url),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final textSize = MediaQuery.textScalerOf(context).scale(14);
+              if (constraints.maxWidth < 280 || textSize > 21) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 160, child: thumbnail),
+                    const SizedBox(height: 8),
+                    details
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  SizedBox(width: isReplay ? 104 : 120, child: thumbnail),
+                  const SizedBox(width: 12),
+                  Expanded(child: details),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BroadcastThumbnail extends StatelessWidget {
+  final String url;
+
+  const _BroadcastThumbnail({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final placeholder = ColoredBox(
+      color: colors.primaryContainer,
+      child: Center(
+          child: Icon(Icons.ondemand_video, color: colors.onPrimaryContainer)),
+    );
+
+    return ExcludeSemantics(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: url.startsWith('https://')
+              ? Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  frameBuilder: (context, child, frame, synchronous) =>
+                      synchronous || frame != null ? child : placeholder,
+                  errorBuilder: (context, error, stack) => placeholder,
+                )
+              : placeholder,
+        ),
+      ),
+    );
+  }
 }

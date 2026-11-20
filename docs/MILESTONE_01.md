@@ -1,33 +1,23 @@
-# Milestone 01: Flutter foundation and Watch tab
+# Milestone 01 · Flutter foundation and Watch tab
 
-Source reference: mikebynum/DCGTV-iOS (SwiftUI). The original repository is not modified.
+The Watch layout and exact `DCGTVWatchHeader.png` artwork come from the SwiftUI Watch screen in `mikebynum/DCGTV-iOS`. The banner includes the Charter Bank branding and links to its website. Flutter also shows upcoming DCGTV broadcasts from the WordPress feed. The SwiftUI away-stream section uses a separate games feed and is outside this milestone.
 
-## Scope
-- Dart models matching the existing WordPress streams endpoint
-- Shared HTTP client with HTTP status and JSON validation
-- Persistent stream cache, stale/live distinction, 60-second throttling and 120-second status expiry
-- Watch tab showing live, upcoming and replay broadcasts
-- HTTPS-only video links via platform in-app browser
-- System light/dark theme and DCG red branding
-- Four-tab navigation shell; Home, Schedule and Shows intentionally remain placeholders
-- Sponsor acknowledgement with Charter Bank link
+## Broadcast refresh
 
-## Known gaps / required before merging
-1. Native Flutter project scaffolding (android/, ios/, platform manifests) must be generated locally with a Flutter SDK; the GitHub connector can commit text files but the current execution environment has no Flutter/Dart SDK.
-2. Run flutter pub get, flutter analyze, flutter test and flutter run on iOS and Android.
-3. Compare Watch tab against the live SwiftUI app; replace placeholder header and sponsor text with approved exact DCGTV and Charter Bank assets.
-4. Verify device/browser behavior and API payloads, including timezone formats and video links.
-5. Add integration/widget tests for offline fallback, lifecycle refresh and video launch.
-6. Do not replace the App Store iOS app until feature parity and release validation.
+- App startup loads the saved broadcast list before requesting an update. Pull to refresh or use Retry when live status is unverified. Automatic network attempts are at least 60 seconds apart in the foreground.
+- The live badge requires the WordPress feed to report a non-stale snapshot with an `updated_at` timestamp less than 120 seconds old. A failed request, expired timestamp, or disk-cache load leaves live status unverified. Available playback links remain usable.
+- The request URL varies by minute because WordPress can cache the bare endpoint for five minutes. WordPress still controls when it updates the underlying feed.
+- Broadcast times use the device timezone and time format. Recent broadcasts use the feed’s replay list, newest first.
 
-## Local setup (Mac)
-Install Flutter SDK and Android Studio. Clone this repository.
-Run:
+## Validate on a Mac
+
+Use the existing Flutter checkout if it already has generated native files. For a fresh checkout only, generate missing native scaffolding with `flutter create --platforms=ios,android --project-name dcgtv .` and review the generated files before committing them. The native directories generated during earlier local setup are still local.
+
 ```sh
-flutter create --platforms=ios,android --project-name dcgtv .
 flutter pub get
 flutter analyze
 flutter test
 flutter run
 ```
-Review generated native files before committing them to the PR. Do not overwrite lib/ or pubspec.yaml with starter templates.
+
+Before merging, validate the layout and browser playback on both Android and iOS, including a real live event. Verify that pull-to-refresh restores current status after reconnecting and that the sponsor banner and YouTube channel links open. Home, Schedule, and Shows remain placeholders in the Flutter app.
