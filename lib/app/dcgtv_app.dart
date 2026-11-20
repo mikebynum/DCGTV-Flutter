@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -12,6 +13,7 @@ import '../services/results_repository.dart';
 import '../services/shows_repository.dart';
 import '../services/streams_repository.dart';
 import 'dcg_theme.dart';
+import 'floating_material_tab_bar.dart';
 import 'glass_tab_bar.dart';
 
 class DcgTvApp extends StatelessWidget {
@@ -104,12 +106,14 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    const labels = ['Home', 'Watch', 'Schedule', 'Shows'];
-    const icons = [
-      Icons.home_rounded,
-      Icons.ondemand_video_rounded,
-      Icons.calendar_month_rounded,
-      Icons.local_movies_rounded,
+    const destinations = [
+      NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Home'),
+      NavigationDestination(
+          icon: Icon(Icons.ondemand_video_rounded), label: 'Watch'),
+      NavigationDestination(
+          icon: Icon(Icons.calendar_month_rounded), label: 'Schedule'),
+      NavigationDestination(
+          icon: Icon(Icons.local_movies_rounded), label: 'Shows'),
     ];
     final tabs = IndexedStack(index: _selected, children: [
       HomeScreen(
@@ -123,8 +127,11 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
       ScheduleScreen(repository: _games),
       ShowsScreen(repository: _shows),
     ]);
-    final showGlassBar =
-        _useGlassTabBar && MediaQuery.viewInsetsOf(context).bottom == 0;
+    final useAndroidBar =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    final useFloatingBar = _useGlassTabBar || useAndroidBar;
+    final showFloatingBar =
+        useFloatingBar && MediaQuery.viewInsetsOf(context).bottom == 0;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: Theme.of(context).brightness == Brightness.dark
@@ -133,20 +140,24 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
       child: Scaffold(
         body: Builder(builder: (context) {
           final media = MediaQuery.of(context);
-          final barBottom =
-              (media.padding.bottom - 6).clamp(8.0, double.infinity);
-          final bottomPadding = barBottom + GlassTabBar.height;
+          final barBottom = useAndroidBar
+              ? media.padding.bottom + 8
+              : (media.padding.bottom - 6).clamp(8.0, double.infinity);
+          final barHeight = useAndroidBar
+              ? FloatingMaterialTabBar.heightFor(media.textScaler)
+              : GlassTabBar.height;
+          final bottomPadding = barBottom + barHeight;
           return Stack(
             fit: StackFit.expand,
             children: [
               MediaQuery(
-                data: showGlassBar
+                data: showFloatingBar
                     ? media.copyWith(
                         padding: media.padding.copyWith(bottom: bottomPadding))
                     : media,
                 child: tabs,
               ),
-              if (showGlassBar)
+              if (showFloatingBar)
                 Positioned(
                   left: media.padding.left + 16,
                   right: media.padding.right + 16,
@@ -154,26 +165,29 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 540),
-                      child: GlassTabBar(
-                        selectedIndex: _selected,
-                        onSelected: _selectTab,
-                      ),
+                      child: useAndroidBar
+                          ? FloatingMaterialTabBar(
+                              destinations: destinations,
+                              selectedIndex: _selected,
+                              onSelected: _selectTab,
+                              height: barHeight,
+                            )
+                          : GlassTabBar(
+                              selectedIndex: _selected,
+                              onSelected: _selectTab,
+                            ),
                     ),
                   ),
                 ),
             ],
           );
         }),
-        bottomNavigationBar: _useGlassTabBar
+        bottomNavigationBar: useFloatingBar
             ? null
             : NavigationBar(
                 selectedIndex: _selected,
                 onDestinationSelected: _selectTab,
-                destinations: [
-                  for (var i = 0; i < labels.length; i++)
-                    NavigationDestination(
-                        icon: Icon(icons[i]), label: labels[i]),
-                ],
+                destinations: destinations,
               ),
       ),
     );
