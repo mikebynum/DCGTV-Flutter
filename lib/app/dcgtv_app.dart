@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import '../core/presentation.dart';
 import '../features/home/home_screen.dart';
 import '../features/schedule/schedule_screen.dart';
+import '../features/shows/shows_screen.dart';
 import '../features/watch/watch_screen.dart';
 import '../services/games_repository.dart';
+import '../services/shows_repository.dart';
 import '../services/streams_repository.dart';
 
 class DcgTvApp extends StatelessWidget {
@@ -41,6 +43,7 @@ class DcgTvShell extends StatefulWidget {
 class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
   final _streams = StreamsRepository();
   final _games = GamesRepository();
+  final _shows = ShowsRepository();
   var _selected = 0;
   Timer? _streamRefreshTimer;
 
@@ -69,14 +72,19 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
       return;
     }
     unawaited(_streams.refresh());
-    if (_selected == 0 || _selected == 2) unawaited(_games.refresh());
+    _refreshSelectedTab();
     _startStreamRefreshTimer();
   }
 
   void _selectTab(int index) {
     if (_selected == index) return;
     setState(() => _selected = index);
-    if (index == 0 || index == 2) unawaited(_games.refresh());
+    _refreshSelectedTab();
+  }
+
+  void _refreshSelectedTab() {
+    if (_selected == 0 || _selected == 2) unawaited(_games.refresh());
+    if (_selected == 3) unawaited(_shows.refresh());
   }
 
   @override
@@ -85,6 +93,7 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
     _streamRefreshTimer?.cancel();
     _streams.dispose();
     _games.dispose();
+    _shows.dispose();
     super.dispose();
   }
 
@@ -107,7 +116,7 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
         ),
         WatchScreen(repository: _streams),
         ScheduleScreen(repository: _games),
-        const _PendingScreen(title: 'Shows'),
+        ShowsScreen(repository: _shows),
       ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selected,
@@ -119,13 +128,4 @@ class _DcgTvShellState extends State<DcgTvShell> with WidgetsBindingObserver {
       ),
     );
   }
-}
-
-class _PendingScreen extends StatelessWidget {
-  final String title;
-  const _PendingScreen({required this.title});
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Text('$title — coming in a later milestone'),
-      );
 }
